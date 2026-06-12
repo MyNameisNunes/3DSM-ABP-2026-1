@@ -136,6 +136,20 @@ export class ApiError extends Error {
   }
 }
 
+/** Extrai a mensagem do payload de erro, incluindo os detalhes de validação (zod `issues`) quando houver. */
+function extractErrorMessage(payload: unknown, fallback: string): string {
+  if (typeof payload !== "object" || payload === null) return fallback;
+  const obj = payload as { message?: unknown; issues?: unknown };
+  const base = "message" in obj && obj.message ? String(obj.message) : fallback;
+  if (obj.issues && typeof obj.issues === "object") {
+    const fields = Object.entries(obj.issues as Record<string, unknown>)
+      .map(([field, errs]) => `${field}: ${Array.isArray(errs) ? errs.join(", ") : String(errs)}`)
+      .filter(Boolean);
+    if (fields.length > 0) return `${base} (${fields.join("; ")})`;
+  }
+  return base;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -154,12 +168,39 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       payload = undefined;
     }
 
-    const message =
-      typeof payload === "object" && payload !== null && "message" in payload
-        ? String(payload.message)
-        : "Nao foi possivel concluir a requisicao.";
+    const message = extractErrorMessage(payload, "Nao foi possivel concluir a requisicao.");
 
     throw new ApiError(message, response.status, payload);
+  }
+
+  if (response.status === 204 || response.headers.get("content-length") === "0") {
+    return undefined as T;
+  }
+
+  return response.json() as Promise<T>;
+}
+
+/** Upload multipart/form-data — não força Content-Type para o browser anexar o boundary. */
+async function uploadRequest<T>(path: string, token: string, body: FormData): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body,
+  });
+
+  if (!response.ok) {
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = undefined;
+    }
+    const message = extractErrorMessage(payload, "Nao foi possivel concluir o upload.");
+    throw new ApiError(message, response.status, payload);
+  }
+
+  if (response.status === 204 || response.headers.get("content-length") === "0") {
+    return undefined as T;
   }
 
   return response.json() as Promise<T>;
@@ -483,11 +524,35 @@ export function listDocuments(
 
 export function createDocumentLink(token: string, input: CreateDocumentLinkInput): Promise<{ document: ApiDocument }> {
   if (USE_MOCK) return mockApi.createDocumentLink(token, input);
-  return request<{ document: ApiDocument }>("/documentos/link", {
+  return request<{ document: ApiDocument }>("/documentos/links", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(input),
   });
+}
+
+export interface CreateDocumentFileInput {
+  title: string;
+  description?: string;
+  sector?: string;
+  tags?: string[];
+  visibility?: "private" | "public";
+}
+
+export function createDocumentFile(
+  token: string,
+  input: CreateDocumentFileInput,
+  file: File,
+): Promise<{ document: ApiDocument }> {
+  if (USE_MOCK) return mockApi.createDocumentFile(token, input, file);
+  const form = new FormData();
+  form.append("file", file);
+  form.append("title", input.title);
+  if (input.description) form.append("description", input.description);
+  if (input.sector)      form.append("sector", input.sector);
+  if (input.tags)        form.append("tags", JSON.stringify(input.tags));
+  if (input.visibility)  form.append("visibility", input.visibility);
+  return uploadRequest<{ document: ApiDocument }>("/documentos/arquivos", token, form);
 }
 
 export function deleteDocument(token: string, id: string): Promise<void> {
@@ -538,9 +603,9 @@ export function listFinanceEntries(
   if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
   if (params?.type)     qs.set("type",     params.type);
   if (params?.status)   qs.set("status",   params.status);
-  return request<{ data: ApiFinanceEntry[]; pagination: ApiPagination }>(`/finance?${qs}`, {
+  return request<{ entries: ApiFinanceEntry[]; pagination: ApiPagination }>(`/finance?${qs}`, {
     headers: { Authorization: `Bearer ${token}` },
-  }).then(({ data, pagination }) => ({ entries: data, pagination }));
+  });
 }
 
 export function createFinanceEntry(token: string, input: CreateFinanceEntryInput): Promise<{ entry: ApiFinanceEntry }> {

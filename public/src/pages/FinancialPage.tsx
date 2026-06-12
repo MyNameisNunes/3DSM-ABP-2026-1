@@ -87,15 +87,87 @@ function CategoriaBadge({ categoria }: { categoria: Transaction["categoria"] }) 
   );
 }
 
+type ApiStatus = ApiFinanceEntry["status"];
+
+interface EntryForm {
+  type: "income" | "expense";
+  category: string;
+  amount: string;
+  dueDate: string;
+  status: ApiStatus;
+  notes: string;
+}
+
+const EMPTY_ENTRY_FORM: EntryForm = {
+  type: "income",
+  category: "Venda",
+  amount: "",
+  dueDate: new Date().toISOString().slice(0, 10),
+  status: "paid",
+  notes: "",
+};
+
+const STATUS_OPTIONS: { value: ApiStatus; label: string }[] = [
+  { value: "paid",      label: "Concluído" },
+  { value: "pending",   label: "Pendente" },
+  { value: "overdue",   label: "Falhado" },
+  { value: "cancelled", label: "Cancelado" },
+];
+
 export default function FinancialPage() {
-  const { entries, loading } = useFinance();
+  const { entries, loading, error, addEntry, removeEntry } = useFinance();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<Transaction["status"] | "Todos">("Todos");
   const [filterCategoria, setFilterCategoria] = useState<Transaction["categoria"] | "Todos">("Todos");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<EntryForm>(EMPTY_ENTRY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const transactions = useMemo(() => entries.map(toTransaction), [entries]);
+
+  function closeForm() {
+    setShowForm(false);
+    setForm(EMPTY_ENTRY_FORM);
+    setFormError(null);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const amount = parseFloat(form.amount.replace(",", "."));
+    if (!form.category.trim() || !Number.isFinite(amount) || amount <= 0 || !form.dueDate) {
+      setFormError("Preencha categoria, um valor maior que zero e a data de vencimento.");
+      return;
+    }
+    setFormError(null);
+    setSaving(true);
+    try {
+      await addEntry({
+        type:     form.type,
+        category: form.category.trim(),
+        amount,
+        dueDate:  new Date(form.dueDate + "T12:00:00").toISOString(),
+        status:   form.status,
+        notes:    form.notes.trim() || undefined,
+      });
+      closeForm();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Não foi possível salvar o lançamento.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(t: Transaction) {
+    if (!window.confirm("Excluir este lançamento?")) return;
+    try {
+      await removeEntry(t.id);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Não foi possível excluir o lançamento.");
+    }
+  }
 
   const filtered = useMemo(() => {
     return transactions
@@ -171,7 +243,18 @@ export default function FinancialPage() {
                 Acompanhe receitas, transações e desempenho financeiro da concessionária.
               </p>
             </div>
+            <button
+              onClick={() => setShowForm(true)}
+              className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 active:scale-95"
+            >
+              <span className="text-lg">+</span> Novo Lançamento
+            </button>
           </div>
+          {error && (
+            <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+              {error}
+            </p>
+          )}
         </header>
 
         {/* KPI Cards */}
@@ -265,7 +348,7 @@ export default function FinancialPage() {
         {/* Filters */}
         <section className="rounded-[2rem] border border-slate-200 bg-white/95 p-6 shadow-sm backdrop-blur">
           <p className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">Filtros</p>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <label className="block xl:col-span-2">
               <span className="text-sm font-semibold text-slate-600">Pesquisar</span>
               <input
@@ -287,6 +370,20 @@ export default function FinancialPage() {
                 <option value="Concluído">Concluído</option>
                 <option value="Pendente">Pendente</option>
                 <option value="Falhado">Falhado</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-600">Categoria</span>
+              <select
+                value={filterCategoria}
+                onChange={(e) => setFilterCategoria(e.target.value as Transaction["categoria"] | "Todos")}
+                className="mt-2 w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              >
+                <option value="Todos">Todas</option>
+                <option value="Venda">Venda</option>
+                <option value="Entrada">Entrada</option>
+                <option value="Comissão">Comissão</option>
+                <option value="Despesa">Despesa</option>
               </select>
             </label>
             <label className="block">
@@ -329,6 +426,7 @@ export default function FinancialPage() {
                   <th className="px-4 py-3 font-semibold">Vencimento</th>
                   <th className="px-4 py-3 font-semibold">Categoria</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -340,11 +438,19 @@ export default function FinancialPage() {
                       <td className="whitespace-nowrap px-4 py-4 text-slate-500">{formatDate(t.data)}</td>
                       <td className="whitespace-nowrap px-4 py-4"><CategoriaBadge categoria={t.categoria} /></td>
                       <td className="whitespace-nowrap px-4 py-4"><StatusBadge status={t.status} /></td>
+                      <td className="whitespace-nowrap px-4 py-4 text-right">
+                        <button
+                          onClick={() => handleDelete(t)}
+                          className="rounded-lg px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition"
+                        >
+                          Excluir
+                        </button>
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-slate-400">
+                    <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
                       Nenhum lançamento encontrado para os filtros aplicados.
                     </td>
                   </tr>
@@ -355,6 +461,126 @@ export default function FinancialPage() {
         </section>
 
       </div>
+
+      {/* New Entry Modal */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-slate-900">Novo Lançamento</h2>
+              <button
+                onClick={closeForm}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-700">Tipo *</span>
+                  <select
+                    value={form.type}
+                    onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as EntryForm["type"] }))}
+                    className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    <option value="income">Receita</option>
+                    <option value="expense">Despesa</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-700">Categoria *</span>
+                  <input
+                    type="text"
+                    required
+                    list="finance-categorias"
+                    value={form.category}
+                    onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                    placeholder="Ex: Venda"
+                    className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                  <datalist id="finance-categorias">
+                    <option value="Venda" />
+                    <option value="Entrada" />
+                    <option value="Comissão" />
+                    <option value="Despesa" />
+                    <option value="Marketing" />
+                    <option value="Manutenção" />
+                  </datalist>
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-700">Valor (R$) *</span>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="0.01"
+                    value={form.amount}
+                    onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                    placeholder="0,00"
+                    className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-700">Vencimento *</span>
+                  <input
+                    type="date"
+                    required
+                    value={form.dueDate}
+                    onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+                    className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </label>
+              </div>
+              <label className="block">
+                <span className="text-sm font-semibold text-slate-700">Status *</span>
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as ApiStatus }))}
+                  className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                >
+                  {STATUS_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-sm font-semibold text-slate-700">Descrição (opcional)</span>
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                  rows={2}
+                  placeholder="Ex: Honda Civic 2023 - Marcio Silva"
+                  className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-none"
+                />
+              </label>
+
+              {formError && (
+                <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{formError}</p>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeForm}
+                  className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:opacity-60"
+                >
+                  {saving ? "Salvando…" : "Salvar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

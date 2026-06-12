@@ -37,6 +37,3 @@ CREATE INDEX "agenda_events_companyId_status_idx" ON "agenda_events"("companyId"
 -- AddForeignKey
 ALTER TABLE "agenda_events" ADD CONSTRAINT "agenda_events_leadId_fkey"
     FOREIGN KEY ("leadId") REFERENCES "leads"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- Fix FinanceEntry dueDate: backfill any rows missing dueDate (uses occurredAtUtc as fallback)
-UPDATE "finance_entries" SET "dueDate" = "occurredAtUtc" WHERE "dueDate" IS NULL;

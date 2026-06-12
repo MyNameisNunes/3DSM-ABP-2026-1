@@ -5,21 +5,12 @@ import {
 } from 'recharts';
 import MetricCard from '../Dashboard/MetricCard';
 import DynamicIcon from '../UI/DynamicIcon';
+import OriginBadge from '../Lead/OriginBadge';
+import { getOrigin } from '../../lib/leadOrigins';
 import { useLeads } from '../../hooks/useLeads';
 
 type PeriodoFiltro = 'semana' | 'mes' | 'ano' | 'customizado';
 type VisaoAtiva = 'comercial' | 'analitico';
-
-const ORIGIN_LABELS: Record<string, string> = {
-  visita_loja: 'Visita à Loja',
-  telefone: 'Telefone',
-  whatsapp: 'WhatsApp',
-  instagram: 'Instagram',
-  formulario: 'Formulário',
-  outro: 'Outro',
-};
-
-const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#6366f1', '#ef4444', '#8b5cf6'];
 
 const STATUS_COLORS: Record<string, string> = {
   'Novo': '#3b82f6',
@@ -72,10 +63,10 @@ export default function DashboardGerenteGeral() {
   const origemPie = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const l of filtered) counts[l.origin] = (counts[l.origin] || 0) + 1;
-    return Object.entries(counts).map(([key, value]) => ({
-      name: ORIGIN_LABELS[key] ?? key,
-      value,
-    }));
+    return Object.entries(counts).map(([key, value]) => {
+      const origin = getOrigin(key);
+      return { key, name: origin.label, value, color: origin.color };
+    });
   }, [filtered]);
 
   // Bar: leads por status
@@ -104,7 +95,10 @@ export default function DashboardGerenteGeral() {
     const counts: Record<string, number> = {};
     for (const l of filtered) counts[l.origin] = (counts[l.origin] || 0) + 1;
     return Object.entries(counts)
-      .map(([key, count]) => ({ name: ORIGIN_LABELS[key] ?? key, count, pct: total > 0 ? `${((count / total) * 100).toFixed(0)}%` : '0%' }))
+      .map(([key, count]) => {
+        const origin = getOrigin(key);
+        return { key, name: origin.label, color: origin.color, count, pct: total > 0 ? `${((count / total) * 100).toFixed(0)}%` : '0%' };
+      })
       .sort((a, b) => b.count - a.count);
   }, [filtered, total]);
 
@@ -196,16 +190,16 @@ export default function DashboardGerenteGeral() {
                   <ResponsiveContainer width="100%" height={220}>
                     <PieChart>
                       <Pie data={origemPie} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} dataKey="value">
-                        {origemPie.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                        {origemPie.map((entry) => <Cell key={entry.key} fill={entry.color} />)}
                       </Pie>
                       <RTooltip formatter={(v) => [`${v} leads`, '']} />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5">
-                    {origemPie.map((item, i) => (
-                      <div key={item.name} className="flex items-center gap-1.5 text-xs text-slate-600">
-                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                        {item.name} ({item.value})
+                  <div className="flex flex-wrap justify-center gap-x-3 gap-y-1.5">
+                    {origemPie.map((item) => (
+                      <div key={item.key} className="flex items-center gap-1.5 text-xs">
+                        <OriginBadge value={item.key} />
+                        <span className="font-semibold text-slate-900">({item.value})</span>
                       </div>
                     ))}
                   </div>
@@ -235,13 +229,13 @@ export default function DashboardGerenteGeral() {
               <h3 className="text-lg font-bold text-slate-900 mb-4">Volume por Canal de Captação</h3>
               <div className="space-y-3.5">
                 {origensBar.map((item) => (
-                  <div key={item.name} className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium text-slate-600">{item.name}</span>
+                  <div key={item.key} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <OriginBadge value={item.key} size="md" />
                       <span className="font-bold text-slate-900">{item.count} <span className="text-xs font-normal text-slate-400">({item.pct})</span></span>
                     </div>
                     <div className="w-full bg-slate-100 h-2 rounded-full">
-                      <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: item.pct }} />
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: item.pct, background: item.color }} />
                     </div>
                   </div>
                 ))}

@@ -1,16 +1,9 @@
+import OriginBadge from "./OriginBadge";
+
 const IMPORTANCE_STYLE = {
   frio:   { label: "Frio",   bg: "#eff6ff", color: "#3b82f6", border: "#bfdbfe" },
   morno:  { label: "Morno",  bg: "#fff7ed", color: "#f97316", border: "#fed7aa" },
   quente: { label: "Quente", bg: "#fef2f2", color: "#ef4444", border: "#fecaca" },
-};
-
-const ORIGIN_LABELS: Record<string, string> = {
-  visita_loja: "Loja",
-  telefone:    "Telefone",
-  whatsapp:    "WhatsApp",
-  instagram:   "Instagram",
-  formulario:  "Formulário",
-  outro:       "Outro",
 };
 
 interface LeadCardProps {
@@ -37,7 +30,6 @@ export default function LeadCard({
   onUnarchive,
 }: LeadCardProps) {
   const imp = IMPORTANCE_STYLE[importance] ?? IMPORTANCE_STYLE.morno;
-  const originLabel = ORIGIN_LABELS[origin] ?? origin;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm select-none cursor-grab active:cursor-grabbing">
@@ -60,9 +52,7 @@ export default function LeadCard({
         >
           {imp.label}
         </span>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
-          {originLabel}
-        </span>
+        <OriginBadge value={origin} />
       </div>
 
       {/* Attendant */}

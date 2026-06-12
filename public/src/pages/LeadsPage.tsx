@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -14,7 +14,10 @@ import {
 import Navbar from "../components/Layouts/Navbar";
 import LeadCard from "../components/Lead/LeadCard";
 import LeadForm from "../components/Lead/LeadForm";
+import ArchiveLeads from "../components/Lead/ArchiveLeads";
 import DelegationManager from "../components/Lead/DelegationManager";
+import OriginBadge from "../components/Lead/OriginBadge";
+import { LEAD_ORIGINS } from "../lib/leadOrigins";
 import type { LeadFormData } from "../components/Lead/LeadForm";
 import { useAuth } from "../contexts/useAuth";
 import { useLeads } from "../hooks/useLeads";
@@ -180,14 +183,6 @@ function KanbanColumn({
 
 // ── Edit modal ──────────────────────────────────────────────────────────────
 const EDIT_STAGES = ["Novo", "Em atendimento", "Agendado", "Em negociação", "Vendido", "Perdido"] as const;
-const EDIT_ORIGINS = [
-  { value: "visita_loja", label: "Visita à loja" },
-  { value: "telefone",    label: "Telefone" },
-  { value: "whatsapp",    label: "WhatsApp" },
-  { value: "instagram",   label: "Instagram" },
-  { value: "formulario",  label: "Formulário" },
-  { value: "outro",       label: "Outro" },
-];
 const EDIT_IMPORTANCES = [
   { value: "frio",   label: "Frio" },
   { value: "morno",  label: "Morno" },
@@ -270,8 +265,11 @@ function EditLeadModal({
             <div>
               <label className="block text-sm font-medium text-slate-700">Origem *</label>
               <select value={origin} onChange={(e) => setOrigin(e.target.value)} className={INPUT_CLS}>
-                {EDIT_ORIGINS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {LEAD_ORIGINS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
+              <div className="mt-2">
+                <OriginBadge value={origin} size="md" />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700">Temperatura *</label>
@@ -410,18 +408,30 @@ export default function LeadsPage() {
     if (viewArchived) fetchArchived();
   }, [viewArchived, fetchArchived]);
 
+  // Aplica a visibilidade por papel a qualquer conjunto de leads.
+  const filterByRole = useCallback(
+    (list: ApiLead[]) => {
+      if (user?.role === "ATENDENTE") {
+        return list.filter((l) => l.attendantId === user.id);
+      }
+      if (user?.role === "GERENTE") {
+        const teamIds = new Set(assignableUsers.map((u) => u.id));
+        return list.filter((l) => teamIds.has(l.attendantId) || l.attendantId === user.id);
+      }
+      return list;
+    },
+    [assignableUsers, user?.role, user?.id],
+  );
+
   const sourceLeads = viewArchived ? archivedLeads : leads;
 
-  const visibleLeads = useMemo(() => {
-    if (user?.role === "ATENDENTE") {
-      return sourceLeads.filter((l) => l.attendantId === user.id);
-    }
-    if (user?.role === "GERENTE") {
-      const teamIds = new Set(assignableUsers.map((u) => u.id));
-      return sourceLeads.filter((l) => teamIds.has(l.attendantId) || l.attendantId === user.id);
-    }
-    return sourceLeads;
-  }, [sourceLeads, assignableUsers, user?.role, user?.id]);
+  const visibleLeads = useMemo(() => filterByRole(sourceLeads), [filterByRole, sourceLeads]);
+
+  // Leads perdidos no funil ativo — candidatos ao arquivamento automático.
+  const activeLostLeads = useMemo(
+    () => filterByRole(leads).filter((l) => l.status === "Perdido"),
+    [filterByRole, leads],
+  );
 
   const leadsByStage = useMemo(() => {
     const grouped = {} as Record<LeadStatus, ApiLead[]>;
@@ -483,17 +493,24 @@ export default function LeadsPage() {
     }
   }
 
-  async function handleArchive() {
-    const finalized = closedLeads + leadsByStage["Perdido"].length;
-    const confirmed = window.confirm(
-      `Arquivar ${finalized} lead(s) finalizado(s) ou perdido(s)? Eles sairão do funil ativo.`,
-    );
-    if (!confirmed) return;
+  async function handleArchive({ silent = false }: { silent?: boolean } = {}) {
+    // Conta sempre a partir do funil ativo, independente da visão atual.
+    const finalized = filterByRole(leads).filter(
+      (l) => l.status === "Vendido" || l.status === "Perdido",
+    ).length;
+    if (!silent) {
+      const confirmed = window.confirm(
+        `Arquivar ${finalized} lead(s) finalizado(s) ou perdido(s)? Eles sairão do funil ativo.`,
+      );
+      if (!confirmed) return;
+    }
     setArchiving(true);
     setArchiveMsg(null);
     try {
       const message = await archiveLeads();
       setArchiveMsg(message);
+      // Mantém o dashboard de arquivados em sincronia após mover os leads.
+      if (viewArchived) await fetchArchived();
     } catch (e) {
       setArchiveMsg(e instanceof Error ? e.message : "Não foi possível arquivar os leads.");
     } finally {
@@ -558,7 +575,7 @@ export default function LeadsPage() {
             </button>
             {!viewArchived && canArchive && (
               <button
-                onClick={handleArchive}
+                onClick={() => handleArchive()}
                 disabled={archiving}
                 title="Move leads vendidos ou perdidos para o arquivo"
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
@@ -584,52 +601,54 @@ export default function LeadsPage() {
           </div>
         )}
 
-        {viewArchived && (
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-500 shrink-0">
-            {loadingArchived
-              ? "Carregando arquivados..."
-              : totalLeads === 0
-                ? "Nenhum lead arquivado por aqui."
-                : `${totalLeads} lead(s) arquivado(s). Use “Desarquivar” para devolver ao funil ativo.`}
-          </div>
-        )}
-
-        {/* Kanban board */}
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex-1 min-h-0 overflow-x-auto">
-            <div className="flex h-full gap-3 pb-1">
-              {KANBAN_STAGES.map((stage) => (
-                <KanbanColumn
-                  key={stage}
-                  stage={stage}
-                  leads={leadsByStage[stage]}
-                  canDelegate={canDelegate}
-                  currentUserId={user?.id ?? ""}
-                  currentUserRole={user?.role ?? ""}
-                  archivedView={viewArchived}
-                  onEdit={setEditingLead}
-                  onDelegate={setDelegatingLead}
-                  onUnarchive={canArchive ? handleUnarchive : undefined}
-                />
-              ))}
-            </div>
-          </div>
-
-          <DragOverlay dropAnimation={null}>
-            {activeLead ? (
-              <div className="w-[230px] rotate-2 shadow-2xl opacity-95">
-                <LeadCard
-                  clientName={activeLead.clientName}
-                  subject={activeLead.subject}
-                  origin={activeLead.origin}
-                  importance={activeLead.importance}
-                  attendantName={activeLead.attendantName}
-                  canDelegate={false}
-                />
+        {/* Visão arquivada: dashboard analítico (sem pipeline). */}
+        {viewArchived ? (
+          <ArchiveLeads
+            archivedLeads={visibleLeads}
+            lostLeads={activeLostLeads}
+            loading={loadingArchived}
+            canManage={canArchive}
+            onRescue={handleUnarchive}
+            onAutoArchive={() => handleArchive({ silent: true })}
+          />
+        ) : (
+          /* Kanban board */
+          <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <div className="flex-1 min-h-0 overflow-x-auto">
+              <div className="flex h-full gap-3 pb-1">
+                {KANBAN_STAGES.map((stage) => (
+                  <KanbanColumn
+                    key={stage}
+                    stage={stage}
+                    leads={leadsByStage[stage]}
+                    canDelegate={canDelegate}
+                    currentUserId={user?.id ?? ""}
+                    currentUserRole={user?.role ?? ""}
+                    archivedView={viewArchived}
+                    onEdit={setEditingLead}
+                    onDelegate={setDelegatingLead}
+                    onUnarchive={canArchive ? handleUnarchive : undefined}
+                  />
+                ))}
               </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+            </div>
+
+            <DragOverlay dropAnimation={null}>
+              {activeLead ? (
+                <div className="w-[230px] rotate-2 shadow-2xl opacity-95">
+                  <LeadCard
+                    clientName={activeLead.clientName}
+                    subject={activeLead.subject}
+                    origin={activeLead.origin}
+                    importance={activeLead.importance}
+                    attendantName={activeLead.attendantName}
+                    canDelegate={false}
+                  />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )}
       </main>
 
       {showLeadForm && (

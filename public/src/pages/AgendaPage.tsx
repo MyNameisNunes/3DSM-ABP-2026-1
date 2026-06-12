@@ -102,8 +102,15 @@ const EMPTY_FORM: NovoEventoForm = {
   observacoes: "",
 };
 
+const STATUS_TO_API: Record<EventoStatus, ApiAgendaEvent["status"]> = {
+  Pendente:   "pending",
+  Confirmado: "confirmed",
+  Cancelado:  "cancelled",
+  Concluído:  "completed",
+};
+
 export default function AgendaPage() {
-  const { events: apiEvents, loading, addEvent } = useAgenda();
+  const { events: apiEvents, loading, error, addEvent, updateStatus, removeEvent } = useAgenda();
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -153,22 +160,45 @@ export default function AgendaPage() {
     else setViewMonth((m) => m + 1);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.titulo || !form.data || !form.hora || !form.cliente) return;
     const scheduledAt = new Date(`${form.data}T${form.hora}:00`).toISOString();
-    addEvent({
-      title:       form.titulo,
-      type:        TIPO_TO_API[form.tipo],
-      scheduledAt,
-      clientName:  form.cliente,
-      vehicleName: form.veiculo || undefined,
-      assignedTo:  form.responsavel || undefined,
-      notes:       form.observacoes || undefined,
-    });
-    setSelectedDate(form.data);
-    setForm(EMPTY_FORM);
-    setShowForm(false);
+    try {
+      await addEvent({
+        title:       form.titulo,
+        type:        TIPO_TO_API[form.tipo],
+        scheduledAt,
+        clientName:  form.cliente,
+        vehicleName: form.veiculo || undefined,
+        assignedTo:  form.responsavel || undefined,
+        notes:       form.observacoes || undefined,
+      });
+      setSelectedDate(form.data);
+      setForm(EMPTY_FORM);
+      setShowForm(false);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Não foi possível agendar o evento.");
+    }
+  }
+
+  async function handleStatusChange(ev: Evento, status: EventoStatus) {
+    try {
+      await updateStatus(String(ev.id), STATUS_TO_API[status]);
+      setSelectedEvento((prev) => (prev && prev.id === ev.id ? { ...prev, status } : prev));
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Não foi possível atualizar o evento.");
+    }
+  }
+
+  async function handleDeleteEvent(ev: Evento) {
+    if (!window.confirm(`Excluir o evento "${ev.titulo}"?`)) return;
+    try {
+      await removeEvent(String(ev.id));
+      setSelectedEvento(null);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Não foi possível excluir o evento.");
+    }
   }
 
   const upcomingEventos = useMemo(() => {
@@ -212,6 +242,11 @@ export default function AgendaPage() {
               <span className="text-lg">+</span> Novo Evento
             </button>
           </div>
+          {error && (
+            <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+              {error}
+            </p>
+          )}
         </header>
 
         <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
@@ -613,12 +648,38 @@ export default function AgendaPage() {
                 </div>
               )}
             </dl>
-            <button
-              onClick={() => setSelectedEvento(null)}
-              className="mt-6 w-full rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition"
-            >
-              Fechar
-            </button>
+
+            <div className="mt-6 border-t border-slate-100 pt-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Alterar status</p>
+              <div className="flex flex-wrap gap-2">
+                {(["Confirmado", "Concluído", "Pendente", "Cancelado"] as EventoStatus[])
+                  .filter((s) => s !== selectedEvento.status)
+                  .map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => handleStatusChange(selectedEvento, s)}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition hover:opacity-80 ${STATUS_CORES[s]}`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => handleDeleteEvent(selectedEvento)}
+                className="flex-1 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600 hover:bg-rose-100 transition"
+              >
+                Excluir
+              </button>
+              <button
+                onClick={() => setSelectedEvento(null)}
+                className="flex-1 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

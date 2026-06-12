@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../contexts/useAuth";
 import * as api from "../services/api";
-import type { ApiDocument, CreateDocumentLinkInput } from "../services/api";
+import type { ApiDocument, CreateDocumentLinkInput, CreateDocumentFileInput } from "../services/api";
 
 export type { ApiDocument };
 
@@ -35,6 +35,15 @@ export function useDocuments(params?: { search?: string; sector?: string }) {
     [token],
   );
 
+  const addFile = useCallback(
+    async (input: CreateDocumentFileInput, file: File): Promise<void> => {
+      if (!token) return;
+      const { document } = await api.createDocumentFile(token, input, file);
+      setDocuments((prev) => [document, ...prev]);
+    },
+    [token],
+  );
+
   const removeDocument = useCallback(
     async (id: string): Promise<void> => {
       if (!token) return;
@@ -44,5 +53,5 @@ export function useDocuments(params?: { search?: string; sector?: string }) {
     [token],
   );
 
-  return { documents, loading, error, addLink, removeDocument, refresh: fetchDocuments };
+  return { documents, loading, error, addLink, addFile, removeDocument, refresh: fetchDocuments };
 }

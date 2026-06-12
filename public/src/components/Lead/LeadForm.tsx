@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { LEAD_ORIGINS } from "../../lib/leadOrigins";
+import OriginBadge from "./OriginBadge";
 
 const STAGES = [
   "Novo",
@@ -8,15 +10,6 @@ const STAGES = [
   "Vendido",
   "Perdido",
 ] as const;
-
-const ORIGINS = [
-  { value: "visita_loja", label: "Visita à loja" },
-  { value: "telefone",    label: "Telefone" },
-  { value: "whatsapp",    label: "WhatsApp" },
-  { value: "instagram",   label: "Instagram" },
-  { value: "formulario",  label: "Formulário" },
-  { value: "outro",       label: "Outro" },
-];
 
 const IMPORTANCES = [
   { value: "frio",   label: "Frio" },
@@ -44,7 +37,7 @@ export default function LeadForm({ onclose, onSave }: LeadFormProps) {
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [subject, setSubject]         = useState("");
-  const [origin, setOrigin]           = useState("visita_loja");
+  const [origin, setOrigin]           = useState("loja_fisica");
   const [importance, setImportance]   = useState<"frio" | "morno" | "quente">("morno");
   const [status, setStatus]           = useState<string>("Novo");
   const [saving, setSaving]           = useState(false);
@@ -134,10 +127,13 @@ export default function LeadForm({ onclose, onSave }: LeadFormProps) {
                 onChange={(e) => setOrigin(e.target.value)}
                 className="mt-1 block w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
               >
-                {ORIGINS.map((o) => (
+                {LEAD_ORIGINS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
+              <div className="mt-2">
+                <OriginBadge value={origin} size="md" />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700">Temperatura *</label>

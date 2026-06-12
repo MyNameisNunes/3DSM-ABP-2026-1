@@ -7,17 +7,7 @@ import MetricsTable from "./MetricsTable";
 import LeadDistributionPie from "./LeadDistributionPie";
 import type { MetricSummary, ChartDataPoint, TransactionData, PieDataPoint } from "./index";
 import { useLeads } from "../hooks/useLeads";
-
-const ORIGIN_LABELS: Record<string, string> = {
-  visita_loja: "Visita à loja",
-  telefone: "Telefone",
-  whatsapp: "WhatsApp",
-  instagram: "Instagram",
-  formulario: "Formulário",
-  outro: "Outro",
-};
-
-const ORIGIN_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#6366f1", "#ef4444", "#8b5cf6", "#ec4899"];
+import { getOrigin } from "../lib/leadOrigins";
 
 function leadStatusToTransaction(status: string): TransactionData["status"] {
   if (status === "Vendido") return "Completed";
@@ -80,11 +70,10 @@ export default function MetricsPage() {
     for (const lead of filtered) {
       counts[lead.origin] = (counts[lead.origin] || 0) + 1;
     }
-    return Object.entries(counts).map(([key, value], i) => ({
-      label: ORIGIN_LABELS[key] ?? key,
-      value,
-      color: ORIGIN_COLORS[i % ORIGIN_COLORS.length],
-    }));
+    return Object.entries(counts).map(([key, value]) => {
+      const origin = getOrigin(key);
+      return { label: origin.label, value, color: origin.color };
+    });
   }, [filtered]);
 
   const importanceData = useMemo((): ChartDataPoint[] => [

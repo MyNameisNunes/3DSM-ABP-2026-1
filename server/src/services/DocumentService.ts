@@ -12,7 +12,7 @@ const visibilitySchema = z.enum(["private", "public"]);
 
 const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  pageSize: z.coerce.number().int().min(1).max(200).default(20),
   search: z.string().trim().optional(),
   sector: z.string().trim().optional(),
   tag: z.string().trim().optional(),

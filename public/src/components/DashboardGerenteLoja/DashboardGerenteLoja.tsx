@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
 import MetricCard from '../Dashboard/MetricCard';
+import OriginBadge from '../Lead/OriginBadge';
+import { getOrigin } from '../../lib/leadOrigins';
 import { useLeads } from '../../hooks/useLeads';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
@@ -7,17 +9,6 @@ import {
 } from 'recharts';
 
 type PeriodoFiltro = 'semana' | 'mes' | 'ano' | 'customizado';
-
-const ORIGIN_LABELS: Record<string, string> = {
-  visita_loja: 'Visita à loja',
-  telefone: 'Telefone',
-  whatsapp: 'WhatsApp',
-  instagram: 'Instagram',
-  formulario: 'Formulário',
-  outro: 'Outro',
-};
-
-const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#6366f1', '#ef4444', '#8b5cf6'];
 
 const STATUS_COLORS: Record<string, string> = {
   'Novo': '#3b82f6',
@@ -74,11 +65,10 @@ export default function DashboardGerenteLoja() {
   const originPie = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const l of filtered) counts[l.origin] = (counts[l.origin] || 0) + 1;
-    return Object.entries(counts).map(([key, value], i) => ({
-      name: ORIGIN_LABELS[key] ?? key,
-      value,
-      color: PIE_COLORS[i % PIE_COLORS.length],
-    }));
+    return Object.entries(counts).map(([key, value]) => {
+      const origin = getOrigin(key);
+      return { key, name: origin.label, value, color: origin.color };
+    });
   }, [filtered]);
 
   const mensalBar = useMemo(() => {
@@ -216,13 +206,10 @@ export default function DashboardGerenteLoja() {
                   <Tooltip formatter={(v) => [`${v} leads`, 'Quantidade']} />
                 </PieChart>
               </ResponsiveContainer>
-              <ul className="mt-2 space-y-1">
-                {originPie.map((item, i) => (
-                  <li key={i} className="flex items-center justify-between text-xs text-slate-600">
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full inline-block" style={{ background: item.color }} />
-                      {item.name}
-                    </span>
+              <ul className="mt-2 space-y-1.5">
+                {originPie.map((item) => (
+                  <li key={item.key} className="flex items-center justify-between text-xs text-slate-600">
+                    <OriginBadge value={item.key} />
                     <span className="font-semibold text-slate-900">{item.value}</span>
                   </li>
                 ))}

@@ -16,6 +16,8 @@ const rolePermissions: Record<string, string[]> = {
     Permission.VER_NEGOCIACAO,
     Permission.VER_DASHBOARD_OPERACIONAL,
     Permission.DOCUMENTS_VIEW,
+    Permission.AGENDA_VIEW,
+    Permission.AGENDA_CREATE,
   ],
   [Role.GERENTE]: [
     Permission.CRIAR_LEAD,
@@ -27,6 +29,9 @@ const rolePermissions: Record<string, string[]> = {
     Permission.VER_DASHBOARD_ANALITICO,
     Permission.DOCUMENTS_VIEW,
     Permission.DOCUMENTS_CREATE,
+    Permission.AGENDA_VIEW,
+    Permission.AGENDA_CREATE,
+    Permission.AGENDA_DELETE,
   ],
   [Role.GERENTE_GERAL]: [
     Permission.VER_LEAD,
@@ -37,6 +42,9 @@ const rolePermissions: Record<string, string[]> = {
     Permission.DOCUMENTS_VIEW,
     Permission.DOCUMENTS_CREATE,
     Permission.FINANCE_MANAGE,
+    Permission.AGENDA_VIEW,
+    Permission.AGENDA_CREATE,
+    Permission.AGENDA_DELETE,
   ],
   [Role.ADMIN]: [
     Permission.CRIAR_LEAD,
@@ -59,6 +67,9 @@ const rolePermissions: Record<string, string[]> = {
     Permission.DOCUMENTS_CREATE,
     Permission.DOCUMENTS_DELETE,
     Permission.FINANCE_MANAGE,
+    Permission.AGENDA_VIEW,
+    Permission.AGENDA_CREATE,
+    Permission.AGENDA_DELETE,
   ],
 };
 

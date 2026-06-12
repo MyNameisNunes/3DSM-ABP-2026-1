@@ -12,6 +12,7 @@ import type {
   ApiAgendaEvent,
   ApiPagination,
   CreateDocumentLinkInput,
+  CreateDocumentFileInput,
   CreateFinanceEntryInput,
   CreateAgendaEventInput,
 } from "./api";
@@ -280,9 +281,11 @@ export async function archiveLeads(token: string): Promise<{ message: string }> 
   if (!resolveToken(token)) throw new Error("Token inválido.");
   const leads = getLeads() as MockLead[];
   let count = 0;
+  const now = new Date().toISOString();
   for (const lead of leads) {
     if (!lead.archive && ARCHIVABLE_STATUSES.has(lead.status)) {
       lead.archive = true;
+      lead.updatedAt = now; // marca a data de arquivamento p/ "arquivado há X dias".
       count += 1;
     }
   }
@@ -763,6 +766,37 @@ export async function createDocumentLink(
     visibility: input.visibility ?? "private",
     createdAtUtc: new Date().toISOString(),
     updatedAtUtc: new Date().toISOString(),
+  };
+  const docs = getDocuments();
+  docs.unshift(doc);
+  saveDocuments(docs);
+  return { document: doc };
+}
+
+export async function createDocumentFile(
+  _token: string,
+  input: CreateDocumentFileInput,
+  file: File,
+): Promise<{ document: ApiDocument }> {
+  await delay();
+  const now = new Date().toISOString();
+  const doc: ApiDocument = {
+    id: `doc-${Date.now()}`,
+    companyId: "default-company",
+    title: input.title,
+    description: input.description ?? null,
+    type: "File",
+    url: null,
+    storedFileName: file.name,
+    originalFileName: file.name,
+    contentType: file.type || null,
+    sizeBytes: file.size,
+    sector: input.sector ?? null,
+    tags: input.tags ?? [],
+    isOnboarding: false,
+    visibility: input.visibility ?? "private",
+    createdAtUtc: now,
+    updatedAtUtc: now,
   };
   const docs = getDocuments();
   docs.unshift(doc);

@@ -9,7 +9,7 @@ import { resolveCompanyId } from "./tenant";
 
 const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  pageSize: z.coerce.number().int().min(1).max(200).default(20),
   type: z.enum(["income", "expense"]).optional(),
   status: z.enum(["pending", "paid", "overdue", "cancelled"]).optional(),
   dateFrom: z.coerce.date().optional(),

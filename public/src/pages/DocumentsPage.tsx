@@ -89,22 +89,20 @@ const TIPO_ICON: Record<string, string> = {
   ZIP: "🗜️",
 };
 
+type UploadMode = "arquivo" | "link";
+
 interface UploadForm {
   nome: string;
   categoria: DocCategoria;
-  cliente: string;
-  veiculo: string;
+  url: string;
   descricao: string;
-  dataVencimento: string;
 }
 
 const EMPTY_FORM: UploadForm = {
   nome: "",
   categoria: "Contrato",
-  cliente: "",
-  veiculo: "",
+  url: "",
   descricao: "",
-  dataVencimento: "",
 };
 
 function formatDate(d: string) {
@@ -112,14 +110,18 @@ function formatDate(d: string) {
 }
 
 export default function DocumentsPage() {
-  const { documents: apiDocs, loading, addLink } = useDocuments();
+  const { documents: apiDocs, loading, error, addLink, addFile, removeDocument } = useDocuments();
   const [search, setSearch] = useState("");
   const [filterCategoria, setFilterCategoria] = useState<DocCategoria | "Todos">("Todos");
   const [filterStatus, setFilterStatus] = useState<DocStatus | "Todos">("Todos");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [showUpload, setShowUpload] = useState(false);
+  const [uploadMode, setUploadMode] = useState<UploadMode>("arquivo");
+  const [file, setFile] = useState<File | null>(null);
   const [form, setForm] = useState<UploadForm>(EMPTY_FORM);
   const [selectedDoc, setSelectedDoc] = useState<Documento | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const documentos = useMemo(() => apiDocs.map(toDocumento), [apiDocs]);
 
@@ -137,18 +139,59 @@ export default function DocumentsPage() {
       .sort((a, b) => b.dataUpload.localeCompare(a.dataUpload));
   }, [documentos, search, filterCategoria, filterStatus]);
 
-  function handleUpload(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.nome || !form.cliente) return;
-    addLink({
-      title:       form.nome,
-      description: form.descricao || form.cliente,
-      url:         form.nome.startsWith("http") ? form.nome : `#${form.nome}`,
-      sector:      form.categoria,
-      visibility:  "private",
-    });
-    setForm(EMPTY_FORM);
+  function closeUpload() {
     setShowUpload(false);
+    setForm(EMPTY_FORM);
+    setFile(null);
+    setUploadMode("arquivo");
+    setFormError(null);
+  }
+
+  async function handleUpload(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.nome.trim()) return;
+    setFormError(null);
+    setSaving(true);
+    try {
+      if (uploadMode === "link") {
+        await addLink({
+          title:       form.nome.trim(),
+          description: form.descricao || undefined,
+          url:         form.url.trim(),
+          sector:      form.categoria,
+          visibility:  "private",
+        });
+      } else {
+        if (!file) {
+          setFormError("Selecione um arquivo para enviar.");
+          return;
+        }
+        await addFile(
+          {
+            title:       form.nome.trim(),
+            description: form.descricao || undefined,
+            sector:      form.categoria,
+            visibility:  "private",
+          },
+          file,
+        );
+      }
+      closeUpload();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Não foi possível salvar o documento.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(doc: Documento) {
+    if (!window.confirm(`Excluir o documento "${doc.nome}"?`)) return;
+    try {
+      await removeDocument(String(doc.id));
+      setSelectedDoc(null);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Não foi possível excluir o documento.");
+    }
   }
 
   const totalAtivos = documentos.filter((d) => d.status === "Ativo").length;
@@ -184,6 +227,12 @@ export default function DocumentsPage() {
               <span className="text-lg">+</span> Novo Documento
             </button>
           </div>
+
+          {error && (
+            <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+              {error}
+            </p>
+          )}
 
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl bg-slate-50 px-5 py-4 shadow-sm">
@@ -370,94 +419,111 @@ export default function DocumentsPage() {
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-xl font-bold text-slate-900">Novo Documento</h2>
               <button
-                onClick={() => { setShowUpload(false); setForm(EMPTY_FORM); }}
+                onClick={closeUpload}
                 className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
               >
                 ✕
               </button>
             </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+              {(["arquivo", "link"] as UploadMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => { setUploadMode(mode); setFormError(null); }}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${uploadMode === mode ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                >
+                  {mode === "arquivo" ? "📎 Arquivo" : "🔗 Link"}
+                </button>
+              ))}
+            </div>
+
             <form onSubmit={handleUpload} className="space-y-4">
               <label className="block">
-                <span className="text-sm font-semibold text-slate-700">Nome do arquivo *</span>
+                <span className="text-sm font-semibold text-slate-700">Título *</span>
                 <input
                   type="text"
                   required
                   value={form.nome}
                   onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
-                  placeholder="Ex: Contrato_Joao.pdf"
+                  placeholder="Ex: Contrato de compra e venda"
                   className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 />
               </label>
-              <div className="grid grid-cols-2 gap-3">
+
+              {uploadMode === "arquivo" ? (
                 <label className="block">
-                  <span className="text-sm font-semibold text-slate-700">Categoria *</span>
-                  <select
-                    value={form.categoria}
-                    onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value as DocCategoria }))}
-                    className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  >
-                    <option value="Contrato">Contrato</option>
-                    <option value="Nota Fiscal">Nota Fiscal</option>
-                    <option value="Identidade">Identidade</option>
-                    <option value="CRLV">CRLV</option>
-                    <option value="Laudo">Laudo</option>
-                    <option value="Outro">Outro</option>
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="text-sm font-semibold text-slate-700">Vencimento</span>
+                  <span className="text-sm font-semibold text-slate-700">Arquivo * <span className="font-normal text-slate-400">(até 10 MB)</span></span>
                   <input
-                    type="date"
-                    value={form.dataVencimento}
-                    onChange={(e) => setForm((f) => ({ ...f, dataVencimento: e.target.value }))}
+                    type="file"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      setFile(f);
+                      if (f && !form.nome.trim()) setForm((prev) => ({ ...prev, nome: f.name }));
+                    }}
+                    className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-500"
+                  />
+                  {file && <span className="mt-1 block text-xs text-slate-400">{file.name} · {(file.size / 1024).toFixed(0)} KB</span>}
+                </label>
+              ) : (
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-700">URL *</span>
+                  <input
+                    type="url"
+                    required
+                    value={form.url}
+                    onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
+                    placeholder="https://..."
                     className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                   />
                 </label>
-              </div>
+              )}
+
               <label className="block">
-                <span className="text-sm font-semibold text-slate-700">Cliente *</span>
-                <input
-                  type="text"
-                  required
-                  value={form.cliente}
-                  onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))}
-                  placeholder="Nome do cliente"
+                <span className="text-sm font-semibold text-slate-700">Categoria *</span>
+                <select
+                  value={form.categoria}
+                  onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value as DocCategoria }))}
                   className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                />
+                >
+                  <option value="Contrato">Contrato</option>
+                  <option value="Nota Fiscal">Nota Fiscal</option>
+                  <option value="Identidade">Identidade</option>
+                  <option value="CRLV">CRLV</option>
+                  <option value="Laudo">Laudo</option>
+                  <option value="Outro">Outro</option>
+                </select>
               </label>
               <label className="block">
-                <span className="text-sm font-semibold text-slate-700">Veículo (opcional)</span>
-                <input
-                  type="text"
-                  value={form.veiculo}
-                  onChange={(e) => setForm((f) => ({ ...f, veiculo: e.target.value }))}
-                  placeholder="Ex: Honda Civic 2023"
-                  className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                />
-              </label>
-              <label className="block">
-                <span className="text-sm font-semibold text-slate-700">Descrição (opcional)</span>
+                <span className="text-sm font-semibold text-slate-700">Descrição / Cliente (opcional)</span>
                 <textarea
                   value={form.descricao}
                   onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
                   rows={2}
-                  placeholder="Observações sobre o documento..."
+                  placeholder="Cliente, observações sobre o documento..."
                   className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-none"
                 />
               </label>
+
+              {formError && (
+                <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{formError}</p>
+              )}
+
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => { setShowUpload(false); setForm(EMPTY_FORM); }}
+                  onClick={closeUpload}
                   className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition"
+                  disabled={saving}
+                  className="flex-1 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:opacity-60"
                 >
-                  Salvar
+                  {saving ? "Salvando…" : "Salvar"}
                 </button>
               </div>
             </form>
@@ -522,12 +588,20 @@ export default function DocumentsPage() {
                 </div>
               )}
             </dl>
-            <button
-              onClick={() => setSelectedDoc(null)}
-              className="mt-6 w-full rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition"
-            >
-              Fechar
-            </button>
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => handleDelete(selectedDoc)}
+                className="flex-1 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600 hover:bg-rose-100 transition"
+              >
+                Excluir
+              </button>
+              <button
+                onClick={() => setSelectedDoc(null)}
+                className="flex-1 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
