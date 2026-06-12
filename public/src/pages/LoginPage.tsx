@@ -73,7 +73,7 @@ export default function LoginPage() {
           <div className="flex items-center justify-center p-8 sm:p-10">
             <div className="w-full max-w-md space-y-8">
               <div className="space-y-3">
-                <span className="text-sm uppercase tracking-[0.3em] text-sky-500">Acesso restrito</span>
+                <span className="text-sm uppercase tracking-[0.3em] text-sky-500">Acesso Interno</span>
                 <div>
                   <h2 className="text-3xl font-semibold text-slate-900">Entrar</h2>
                   <p className="mt-2 text-sm text-slate-600">Use suas credenciais para acessar o painel.</p>
